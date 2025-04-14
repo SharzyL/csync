@@ -16,7 +16,8 @@
           legacyPackages = pkgs;
 
           defaultPackage = pkgs.rustPlatform.buildRustPackage {
-            name = "csync";
+            pname = "csync";
+            version = "0.1.0";
             src = with pkgs.lib.fileset; toSource {
               root = ./.;
               fileset = fileFilter (file: file.name != "flake.nix") ./.;

@@ -1,0 +1,13 @@
+[package]
+name = "csync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.36", features = ["derive"] }
+filetime = "0.2.25"
+ignore = "0.4.23"
+notify = "8.0.0"
+tracing = "0.1.41"
+tracing-subscriber = {  version = "0.3.19", features = ["env-filter"] }
+anyhow = "1.0.98"

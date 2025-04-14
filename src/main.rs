@@ -77,14 +77,14 @@ fn main() -> Result<()> {
         .lock()
         .unwrap()
         .initial_sync(args.fast_initial_sync)
-        .context("Failed to initially sync source directory")?;
+        .context(format!("Failed to perform initial sync {source_dir:?}"))?;
 
     let handler_clone = handler.clone();
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_millis(100));
             if let Err(e) = handler_clone.lock().unwrap().check_cache() {
-                error!("Error on checking cache loop: {}", e);
+                error!("Error on check_cache loop: {}", e);
             }
         }
     });

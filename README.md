@@ -1,6 +1,6 @@
 # csync
 
-csync is code/continuous sync, a CLI tool to sync changes in one directory to another in real time, written in Rust, powered by [notify](https://github.com/notify-rs/notify) crate.
+csync is code/continuous sync, a CLI tool to sync changes between directories in real time, written in Rust, powered by [notify](https://github.com/notify-rs/notify) crate.
 
 csync by default synchronizes `.git` and respects `.gitignore`.
 

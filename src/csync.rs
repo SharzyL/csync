@@ -31,6 +31,23 @@ impl Csync {
         use_gitignore: bool,
         no_delete: bool,
     ) -> Result<Self> {
+        // For various editors, when the editor writes a file, it performs the following steps:
+        //     1. MOVE file to file~
+        //     2. CREATE file
+        //     3. MODIFY file
+        //     4. ATTRIB file
+        //     5. DELETE file~
+        //
+        // To avoid unnecessary sync operation,
+        // - When detecting a MOVED_FROM event, we add the relpath to moved_from_cache
+        // - When detecting a MOVED_TO event of file `xxx~`, and `xxx` to moved_from_cache,
+        //   Add `xxx` to ephemeral_file_cache and remove `xxx` from moved_from_cache
+        //   Deletion of `xxx` is not synced
+        // - When items in moved_from_cache expires, sync deletion
+        // - When detecting a CREATE, MODIFY event of file `xxx` and `xxx` in ephemeral_file_cache, ignore the event
+        // - When detecting a ATTRIB event of file `xxx` and `xxx` in ephemeral_file_cache,
+        //   sync file and remove from ephemeral_file_cache
+        // - When items in ephemeral_file_cache expires, sync `xxx` and `xxx~`
         Ok(Self {
             source_dir: source_dir.to_path_buf(),
             target_dir: target_dir.to_path_buf(),
@@ -134,8 +151,8 @@ impl Csync {
             EventKind::Create(_) => self.handle_create(event),
             EventKind::Remove(_) => self.handle_remove(event),
             EventKind::Modify(modify) => match modify {
-                ModifyKind::Data(_) => self.handle_modify(event),
-                ModifyKind::Metadata(_) => self.handle_modify(event),
+                ModifyKind::Data(_) => self.handle_modify(event, false),
+                ModifyKind::Metadata(_) => self.handle_modify(event, true),
                 ModifyKind::Name(rename) => match rename {
                     RenameMode::To => self.handle_moved_to(event),
                     RenameMode::From => self.handle_moved_from(event),
@@ -191,7 +208,7 @@ impl Csync {
         std::thread::sleep(Duration::from_millis(100));
 
         if self.ephemeral_cache.get(&rel_path.to_path_buf()).is_some() {
-            debug!("Skipping ephemeral file creation: {rel_path:?}");
+            debug!("Skipping ephemeral file creation of {rel_path:?}");
             return Ok(());
         }
 
@@ -227,7 +244,7 @@ impl Csync {
 
     #[instrument(skip_all)]
     // TODO: handle metadata only modify
-    fn handle_modify(&mut self, event: &Event) -> Result<()> {
+    fn handle_modify(&mut self, event: &Event, metadata_only: bool) -> Result<()> {
         let (src_path, rel_path, dest_path) = match self.handler_common(event)? {
             Some(x) => x,
             None => return Ok(()),
@@ -240,8 +257,15 @@ impl Csync {
         }
 
         if self.ephemeral_cache.get(&rel_path.to_path_buf()).is_some() {
-            debug!("Skipping ephemeral file modification: {rel_path:?}");
-            return Ok(());
+            if metadata_only {
+                // handle ATTRIB
+                debug!("Detected ATTRIB event on {rel_path:?}, remove it from ephemeral_cache");
+                self.ephemeral_cache.del(&rel_path.to_path_buf());
+            } else {
+                // handle MODIFY
+                debug!("Skipping ephemeral file modification of {rel_path:?}");
+                return Ok(());
+            }
         }
 
         if src_path.exists() {
@@ -271,7 +295,7 @@ impl Csync {
                 }
                 None => {
                     debug!(
-                        "Detected MOVED_FROM event for {rel_path:?}, add in to moved_from_cache"
+                        "Detected MOVED_FROM event for {rel_path:?}, add in to untrackable_moved_from_cache"
                     );
                     self.untrackable_moved_from_cache
                         .set(rel_path.to_path_buf(), ());
@@ -337,23 +361,23 @@ impl Csync {
 
         let Ok(rel_from_path) = src_from_path.strip_prefix(&self.source_dir) else {
             warn!("MOVED_FROM event outside source dir: {src_from_path:?}");
-            return Ok(())
+            return Ok(());
         };
 
         let Ok(rel_to_path) = src_to_path.strip_prefix(&self.source_dir) else {
             warn!("MOVED_TO event outside source dir: {src_to_path:?}");
-            return Ok(())
+            return Ok(());
         };
 
         if self.should_ignore(rel_from_path) {
             debug!("Ignored MOVED_FROM event: {rel_from_path:?} (to {rel_to_path:?})");
         } else {
             let dest_from_path = self.target_dir.join(rel_from_path);
-            if dest_from_path.exists() {
-                info!("sync deletion of {rel_from_path:?}");
+            if !src_from_path.exists() && dest_from_path.exists() {
+                info!("Syncing deletion for MOVED_FROM of {rel_from_path:?} (to {rel_to_path:?})");
                 self.delete_file(&dest_from_path)?;
             } else {
-                debug!("Detected MOVED_FROM event for {rel_from_path:?} but it is missing");
+                debug!("Detected MOVED_FROM event for {rel_from_path:?} no need to sync deletion");
             }
         }
 
@@ -364,7 +388,7 @@ impl Csync {
             if src_to_path.exists() {
                 self.sync_file(src_to_path, &dest_to_path, false)?;
             } else {
-                debug!("Detected MOVED_TO event for {rel_from_path:?} but it is missing");
+                debug!("Detected MOVED_TO event for {rel_to_path:?} (from {rel_from_path:?}) but it is missing");
             }
         }
 

@@ -2,11 +2,21 @@
 
 csync is code/continuous sync, a CLI tool to sync changes between directories in real time, written in Rust, powered by [notify](https://github.com/notify-rs/notify) crate.
 
-csync by default synchronizes `.git` and respects `.gitignore`.
+csync by default synchronizes `.git` and respects `.gitignore` and `.git/info/exclude`. But you can also add arbitrary ignore patterns.
 
 If you want to synchronize to a remote directory, use csync together with sshfs. Support for direct SSH access is planed.
 
+csync is restricted by the capability of notify crate, see [its doc](https://docs.rs/notify/latest/notify/index.html#known-problems) for details.
+
 This project is in its early development stage.
+
+TODOs:
+- Parallelize initial sync
+- (Maybe) use async Rust
+- Debounce large write to a file
+- Use PollWatcher when necessary
+- Direct SSH access
+- Tests
 
 ## Build
 

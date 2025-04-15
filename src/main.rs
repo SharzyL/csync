@@ -44,6 +44,10 @@ struct Args {
     /// Enable trace logging (and debug logging)
     #[arg(long)]
     trace: bool,
+
+    /// A debug mode that only prints event and do nothing
+    #[arg(long)]
+    listen_only: bool,
 }
 
 fn main() -> Result<()> {
@@ -66,7 +70,25 @@ fn main() -> Result<()> {
         .canonicalize()
         .context(format!("Failed to canonicalize {:?}", args.target_dir))?;
 
-    let handler = Arc::new(Mutex::new(Csync::new(
+    if args.listen_only {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = recommended_watcher(tx)?;
+        watcher
+            .watch(&source_dir, RecursiveMode::Recursive)
+            .context(format!("Failed to watch {source_dir:?}"))?;
+
+        for event in rx {
+            if let Ok(event) = event {
+                if !matches!(event.kind, notify::EventKind::Access(_)) {
+                    info!("{:?}", event);
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
+    let csync = Arc::new(Mutex::new(Csync::new(
         &source_dir,
         &target_dir,
         &args.ignore,
@@ -74,13 +96,13 @@ fn main() -> Result<()> {
         args.no_delete,
     )?));
 
-    handler
+    csync
         .lock()
         .unwrap()
         .initial_sync(args.fast_initial_sync)
         .context(format!("Failed to perform initial sync {source_dir:?}"))?;
 
-    let handler_clone = handler.clone();
+    let handler_clone = csync.clone();
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_millis(100));
@@ -98,7 +120,7 @@ fn main() -> Result<()> {
 
     for event in rx {
         if let Ok(event) = event {
-            handler.lock().unwrap().handle_event(&event);
+            csync.lock().unwrap().handle_event(&event);
         }
     }
 

@@ -31,7 +31,7 @@ pub(crate) struct CsyncArgs {
     #[arg(long)]
     pub trace: bool,
 
-    /// A debug mode that only prints event and do nothing
+    /// A debug mode that only prints events and not syncing things
     #[arg(long)]
     pub listen_only: bool,
 }

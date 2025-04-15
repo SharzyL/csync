@@ -1,23 +1,20 @@
-# csync
+# csync: Real-Time Directory Synchronization Tool
 
-csync is code/continuous sync, a CLI tool to sync changes between directories in real time, written in Rust, powered by [notify](https://github.com/notify-rs/notify) crate.
+**csync** (code/continuous sync) is a CLI tool written in Rust that synchronizes changes between directories in real time. It's powered by the [notify](https://github.com/notify-rs/notify) crate.
 
-csync by default synchronizes `.git` and respects `.gitignore` and `.git/info/exclude`. But you can also add arbitrary ignore patterns.
+To synchronize with remote directories, use **csync** in conjunction with sshfs. Direct SSH access support is planned for future releases.
 
-If you want to synchronize to a remote directory, use csync together with sshfs. Support for direct SSH access is planed.
+**csync** is constrained by the capabilities of the notify crate. For detailed information about these limitations, please refer to [the notify documentation](https://docs.rs/notify/latest/notify/index.html#known-problems).
 
-csync is restricted by the capability of notify crate, see [its doc](https://docs.rs/notify/latest/notify/index.html#known-problems) for details.
+This project is currently in early development. The following is a list of planed improvements:
 
-This project is in its early development stage.
-
-TODOs:
-- Parallelize initial sync
-- (Maybe) use async Rust
-- Debounce large write to a file
-- Use PollWatcher when necessary
-- Direct SSH access
-- Tests
-- Currently when accessing git index, a copy of `.git/index` is involved. We want to reduce the cost of large copy.
+- Parallelize initial synchronization process
+- Potentially implement async Rust architecture
+- Implement debouncing for large file write operations
+- Add PollWatcher implementation for environments where necessary
+- Develop direct SSH access functionality
+- Add comprehensive test suite
+- Optimize git index access to reduce the cost of large file copies
 
 ## Build
 
@@ -35,8 +32,8 @@ $ nix build
 ```console
 Usage: csync [OPTIONS] <SOURCE_DIR> <TARGET_DIR>
 Arguments:
-  <SOURCE_DIR>
-  <TARGET_DIR>
+  <SOURCE_DIR>  
+  <TARGET_DIR>  
 Options:
   -i, --ignore <IGNORE>    Globs to ignore, can be specified multiple times
       --no-git-ignore      Do not respect .gitignore and .git/info/exclude
@@ -44,6 +41,7 @@ Options:
       --fast-initial-sync  Use fast metadata-only comparison on initial sync
       --debug              Enable debug logging
       --trace              Enable trace logging (and debug logging)
+      --listen-only        A debug mode that only prints events and not syncing things
   -h, --help               Print help
   -V, --version            Print version
 ```

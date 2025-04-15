@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 type Result<T> = anyhow::Result<T>;
@@ -12,7 +12,7 @@ struct CacheEntry<V> {
 
 pub(crate) struct TTLCache<K, V> {
     ttl: Duration,
-    cache: Mutex<HashMap<K, CacheEntry<V>>>,
+    cache: RwLock<HashMap<K, CacheEntry<V>>>,
 }
 
 fn remove_and_callback<K, V, F, C>(map: &mut HashMap<K, V>, should_remove: F, callback: C) -> Result<()>
@@ -45,23 +45,17 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> TTLCache<K, V> {
     pub fn new(ttl: Duration) -> Self {
         Self {
             ttl,
-            cache: Mutex::new(HashMap::new()),
+            cache: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
-        let cache = self.cache.lock().unwrap();
-        cache.get(key).and_then(|entry| {
-            if entry.created_at.elapsed() < self.ttl {
-                Some(entry.value.clone())
-            } else {
-                None
-            }
-        })
+        let cache = self.cache.read().unwrap();
+        cache.get(key).map(|entry| entry.value.clone())
     }
 
     pub fn set(&self, key: K, value: V) {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.write().unwrap();
         cache.insert(
             key,
             CacheEntry {
@@ -72,7 +66,7 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> TTLCache<K, V> {
     }
 
     pub fn del(&self, key: &K) {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.write().unwrap();
         cache.remove(key);
     }
 
@@ -80,7 +74,7 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> TTLCache<K, V> {
     where
         F: Fn(&K, &V) -> Result<()>,
     {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.write().unwrap();
         let now = Instant::now();
         remove_and_callback(
             &mut cache,

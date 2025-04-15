@@ -11,3 +11,8 @@ notify = "8.0.0"
 tracing = "0.1.41"
 tracing-subscriber = {  version = "0.3.19", features = ["env-filter"] }
 anyhow = "1.0.98"
+
+
+[build-dependencies]
+clap = { version = "4.5.36", features = ["derive"] }
+clap_complete = "4.5.36"

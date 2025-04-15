@@ -1,11 +1,10 @@
+mod args;
 mod cache;
 mod csync;
 
-use crate::csync::Csync;
 use anyhow::Context;
 use clap::Parser;
 use notify::{RecursiveMode, Watcher, recommended_watcher};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{error, info};
@@ -13,45 +12,13 @@ use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use crate::args::CsyncArgs;
+use crate::csync::Csync;
+
 type Result<T> = anyhow::Result<T>;
 
-#[derive(Parser)]
-#[command(version, about)]
-struct Args {
-    source_dir: PathBuf,
-    target_dir: PathBuf,
-
-    /// Globs to ignore, can be specified multiple times
-    #[arg(short, long, action = clap::ArgAction::Append)]
-    ignore: Vec<String>,
-
-    /// Do not respect .gitignore and .git/info/exclude
-    #[arg(long)]
-    no_git_ignore: bool,
-
-    /// Do not sync deletion
-    #[arg(long, default_value_t = false)]
-    no_delete: bool,
-
-    /// Use fast metadata-only comparison on initial sync
-    #[arg(long)]
-    fast_initial_sync: bool,
-
-    /// Enable debug logging
-    #[arg(long)]
-    debug: bool,
-
-    /// Enable trace logging (and debug logging)
-    #[arg(long)]
-    trace: bool,
-
-    /// A debug mode that only prints event and do nothing
-    #[arg(long)]
-    listen_only: bool,
-}
-
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let args = CsyncArgs::parse();
     setup_logger(args.debug, args.trace);
 
     if !args.target_dir.exists() {

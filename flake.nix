@@ -10,23 +10,20 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          overlay = final: prev: {
+            csync = final.callPackage ./pkg.nix { };
+          };
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ overlay ];
+          };
         in
-        rec {
+        {
           legacyPackages = pkgs;
 
-          defaultPackage = pkgs.rustPlatform.buildRustPackage {
-            pname = "csync";
-            version = "0.1.0";
-            src = with pkgs.lib.fileset; toSource {
-              root = ./.;
-              fileset = fileFilter (file: file.name != "flake.nix") ./.;
-            };
-            useFetchCargoVendor = true;
-            cargoHash = "sha256-CA8fMxv86iAcMkdoelUCSEy4RM5VEdjKsiGS7N3cq5Q=";
-          };
+          defaultPackage = pkgs.csync;
 
-          devShell = defaultPackage.overrideAttrs (_: { });
+          devShell = pkgs.csync.overrideAttrs (_: { });
         }
       )
     // {

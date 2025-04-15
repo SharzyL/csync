@@ -173,7 +173,7 @@ impl Csync {
                 Ok(())
             }
         } {
-            error!("error on handling {event:?}: {e}");
+            error!("error on handling {event:?}: {e:?}");
         }
     }
 
@@ -190,7 +190,7 @@ impl Csync {
         };
 
         if self.should_ignore(rel_path) {
-            trace!("Ignored {rel_path:?}");
+            debug!("Ignored {rel_path:?}");
             return Ok(None);
         }
         let dest_path = self.target_dir.join(rel_path);
@@ -259,7 +259,9 @@ impl Csync {
         if self.ephemeral_cache.get(&rel_path.to_path_buf()).is_some() {
             if metadata_only {
                 // handle ATTRIB
-                debug!("Detected ATTRIB event on {rel_path:?}, remove it from ephemeral_cache");
+                debug!(
+                    "Detected ATTRIB event on {rel_path:?}, remove it from ephemeral_cache and continue syncing"
+                );
                 self.ephemeral_cache.del(&rel_path.to_path_buf());
             } else {
                 // handle MODIFY
@@ -269,8 +271,13 @@ impl Csync {
         }
 
         if src_path.exists() {
-            info!("Syncing file changes: {rel_path:?}");
-            self.sync_file(src_path, &dest_path, false)
+            if metadata_only && dest_path.exists() {
+                info!("Syncing metadata: {rel_path:?}");
+                self.sync_metadata(src_path, &dest_path)
+            } else {
+                info!("Syncing file: {rel_path:?}");
+                self.sync_file(src_path, &dest_path, false)
+            }
         } else {
             debug!("Detected MODIFY event for {rel_path:?} but it is missing");
             Ok(())
@@ -374,7 +381,9 @@ impl Csync {
         } else {
             let dest_from_path = self.target_dir.join(rel_from_path);
             if !src_from_path.exists() && dest_from_path.exists() {
-                info!("Syncing deletion for MOVED_FROM of {rel_from_path:?} (to {rel_to_path:?})");
+                info!(
+                    "Syncing deletion for MOVED_FROM event of {rel_from_path:?} (to {rel_to_path:?})"
+                );
                 self.delete_file(&dest_from_path)?;
             } else {
                 debug!("Detected MOVED_FROM event for {rel_from_path:?} no need to sync deletion");
@@ -386,9 +395,14 @@ impl Csync {
         } else {
             let dest_to_path = self.target_dir.join(rel_to_path);
             if src_to_path.exists() {
+                info!(
+                    "Syncing file for MOVED_TO event of {rel_to_path:?} (from {rel_from_path:?})"
+                );
                 self.sync_file(src_to_path, &dest_to_path, false)?;
             } else {
-                debug!("Detected MOVED_TO event for {rel_to_path:?} (from {rel_from_path:?}) but it is missing");
+                debug!(
+                    "Detected MOVED_TO event for {rel_to_path:?} (from {rel_from_path:?}) but it is missing"
+                );
             }
         }
 
@@ -447,7 +461,30 @@ impl Csync {
             .is_ignore()
     }
 
-    #[instrument(skip(self))]
+    fn sync_metadata(&self, src: &Path, dest: &Path) -> Result<()> {
+        let src_metadata =
+            std::fs::metadata(src).context(format!("Failed to get metadata for src {src:?}"))?;
+        let dest_metadata =
+            std::fs::metadata(dest).context(format!("Failed to get metadata for src {dest:?}"))?;
+
+        if let Ok(src_mtime) = src_metadata.modified() {
+            if let Ok(dest_mtime) = src_metadata.modified() {
+                if src_mtime != dest_mtime {
+                    debug!("syncing mtime of {src:?}");
+                    filetime::set_file_mtime(dest, FileTime::from_system_time(src_mtime))
+                        .context("Failed to set mtime")?
+                }
+            }
+        };
+
+        if src_metadata.permissions() != dest_metadata.permissions() {
+            debug!("syncing permissions of {src:?}");
+            std::fs::set_permissions(dest, src_metadata.permissions())
+                .context("Failed to set permissions")?;
+        }
+        Ok(())
+    }
+
     fn sync_file(&self, src: &Path, dest: &Path, fast_check: bool) -> Result<()> {
         if src.is_dir() {
             std::fs::create_dir_all(dest)?;
@@ -458,14 +495,18 @@ impl Csync {
             }
 
             if fast_check {
-                if files_equal_metadata(src, dest)? {
+                if files_equal_fast(src, dest)? {
                     debug!("Skipping file sync by metadata comparison: {src:?}");
                 }
             }
 
+            if dest.exists() {
+                self.sync_metadata(src, dest)?;
+            }
+
             if let Err(e) = std::fs::copy(src, dest) {
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    if files_equal_content(src, dest).unwrap_or(false) {
+                    if files_equal(src, dest).unwrap_or(false) {
                         debug!("Skipping permission denied but unchanged file {src:?}");
                     } else {
                         bail!("Permission denied for changed file {dest:?}")
@@ -474,13 +515,6 @@ impl Csync {
                     Err(e).context(format!("Failed to copy {src:?} to {dest:?}"))?
                 }
             };
-
-            // sync mtime
-            if let Ok(metadata) = src.metadata() {
-                let mtime = FileTime::from_last_modification_time(&metadata);
-                filetime::set_file_mtime(dest, mtime)
-                    .context(format!("Failed to set mtime for {dest:?}"))?
-            }
 
             // sync action will be logged outside, no repeated log
         }
@@ -503,7 +537,7 @@ impl Csync {
     }
 }
 
-fn files_equal_content(a: &Path, b: &Path) -> Result<bool> {
+fn files_equal(a: &Path, b: &Path) -> Result<bool> {
     let mut fa = std::fs::File::open(a)?;
     let mut fb = std::fs::File::open(b)?;
     let mut buf_a = [0; 4096];
@@ -525,7 +559,7 @@ fn files_equal_content(a: &Path, b: &Path) -> Result<bool> {
     }
 }
 
-fn files_equal_metadata(a: &Path, b: &Path) -> Result<bool> {
+fn files_equal_fast(a: &Path, b: &Path) -> Result<bool> {
     let a_meta = a.metadata()?;
     let b_meta = b.metadata()?;
 

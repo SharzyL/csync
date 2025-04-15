@@ -8,7 +8,7 @@ use notify::{RecursiveMode, Watcher, recommended_watcher};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::error;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -51,19 +51,20 @@ fn main() -> Result<()> {
     setup_logger(args.debug, args.trace);
 
     if !args.target_dir.exists() {
+        info!("Creating non-existent target_dir {:?}", args.target_dir);
         std::fs::create_dir(&args.target_dir).context("Failed to create target directory")?;
     } else if !args.target_dir.is_dir() {
-        error!("target directory {:?} is not directory", args.target_dir);
+        error!("target_dir {:?} is not directory", args.target_dir);
     }
 
-    let source_dir = args.source_dir.canonicalize().context(format!(
-        "Failed to canonicalize {}",
-        args.source_dir.display()
-    ))?;
-    let target_dir = args.target_dir.canonicalize().context(format!(
-        "Failed to canonicalize {}",
-        args.target_dir.display()
-    ))?;
+    let source_dir = args
+        .source_dir
+        .canonicalize()
+        .context(format!("Failed to canonicalize {:?}", args.source_dir))?;
+    let target_dir = args
+        .target_dir
+        .canonicalize()
+        .context(format!("Failed to canonicalize {:?}", args.target_dir))?;
 
     let handler = Arc::new(Mutex::new(Csync::new(
         &source_dir,
@@ -84,7 +85,7 @@ fn main() -> Result<()> {
         loop {
             std::thread::sleep(Duration::from_millis(100));
             if let Err(e) = handler_clone.lock().unwrap().check_cache() {
-                error!("Error on check_cache loop: {}", e);
+                error!("Error on check_cache loop: {e:?}");
             }
         }
     });
@@ -93,7 +94,7 @@ fn main() -> Result<()> {
     let mut watcher = recommended_watcher(tx)?;
     watcher
         .watch(&source_dir, RecursiveMode::Recursive)
-        .context(format!("Failed to watch {}", source_dir.display()))?;
+        .context(format!("Failed to watch {source_dir:?}"))?;
 
     for event in rx {
         if let Ok(event) = event {

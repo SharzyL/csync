@@ -17,6 +17,7 @@ TODOs:
 - Use PollWatcher when necessary
 - Direct SSH access
 - Tests
+- Currently when accessing git index, a copy of `.git/index` is involved. We want to reduce the cost of large copy.
 
 ## Build
 

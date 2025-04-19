@@ -15,7 +15,11 @@ pub(crate) struct TTLCache<K, V> {
     cache: RwLock<HashMap<K, CacheEntry<V>>>,
 }
 
-fn remove_and_callback<K, V, F, C>(map: &mut HashMap<K, V>, should_remove: F, callback: C) -> Result<()>
+fn remove_and_callback<K, V, F, C>(
+    map: &mut HashMap<K, V>,
+    should_remove: F,
+    callback: C,
+) -> Result<()>
 where
     K: Eq + std::hash::Hash + Clone,
     V: Clone,

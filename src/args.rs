@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -35,4 +35,3 @@ pub(crate) struct CsyncArgs {
     #[arg(long)]
     pub listen_only: bool,
 }
-

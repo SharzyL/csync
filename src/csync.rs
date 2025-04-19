@@ -1,8 +1,8 @@
 use crate::cache::TTLCache;
-use anyhow::{Context, anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use filetime::FileTime;
-use ignore::WalkBuilder;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use ignore::WalkBuilder;
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
 use std::io::Read;

@@ -1,7 +1,5 @@
 use clap::{CommandFactory, ValueEnum};
-use clap_complete::{
-    Shell, generate_to,
-};
+use clap_complete::{generate_to, Shell};
 use std::env;
 use std::io::Error;
 

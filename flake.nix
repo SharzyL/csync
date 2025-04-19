@@ -3,30 +3,46 @@
 
   inputs = {
     nixpkgs.url = "nixpkgs";
-    flake-utils.url = "flake-utils";
+    flake-parts.url = "flake-parts";
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }@inputs:
-    flake-utils.lib.eachDefaultSystem
-      (system:
-        let
-          overlay = final: prev: {
-            csync = final.callPackage ./pkg.nix { };
-          };
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ overlay ];
-          };
-        in
-        {
-          legacyPackages = pkgs;
+  outputs = { flake-parts, ... }@inputs:
+    let
+      name = "csync";
+      makePkg = ./pkg.nix;
+      overlay = final: _: { ${name} = final.callPackage makePkg { }; };
 
-          defaultPackage = pkgs.csync;
+    in
+    # flake-parts boilerplate
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [
+        inputs.treefmt-nix.flakeModule
+      ];
 
-          devShell = pkgs.csync.overrideAttrs (_: { });
-        }
-      )
-    // {
-      inherit inputs; # for easier introspection via nix repl
+      flake.overlays.default = overlay;
+
+      systems = inputs.nixpkgs.lib.systems.flakeExposed;
+
+      perSystem = { system, config, pkgs, ... }: {
+        packages.default = config.legacyPackages.${name};
+        packages.${name} = config.packages.default;
+        legacyPackages = pkgs;
+
+        _module.args.pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ overlay ];
+        };
+
+        devShells.default = config.packages.default;
+
+        treefmt = {
+          programs.rustfmt.enable = true;
+          programs.nixpkgs-fmt.enable = true;
+        };
+      };
     };
 }

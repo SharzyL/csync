@@ -15,6 +15,7 @@ This project is currently in early development. The following is a list of plane
 - Develop direct SSH access functionality
 - Add comprehensive test suite
 - Optimize git index access to reduce the cost of large file copies
+- Handle .gitignore in subdirectoires
 
 ## Build
 

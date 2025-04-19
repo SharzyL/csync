@@ -3,9 +3,16 @@
 , rustPlatform
 }:
 
+let
+  extractCargoVersion = cargoFile:
+    builtins.head (builtins.match ".*\nversion *= *\"([[:digit:].]+)\" *\n.*"
+      (builtins.readFile cargoFile)
+    );
+in
+
 rustPlatform.buildRustPackage {
   pname = "csync";
-  version = "0.1.0";
+  version = extractCargoVersion ./Cargo.toml;
 
   src = with lib.fileset; toSource {
     root = ./.;

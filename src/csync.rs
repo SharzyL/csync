@@ -256,7 +256,8 @@ impl Csync {
             return Ok(());
         }
 
-        if self.ephemeral_cache.get(&rel_path.to_path_buf()).is_some() {
+        let in_ephermeral_cache = self.ephemeral_cache.get(&rel_path.to_path_buf()).is_some();
+        if in_ephermeral_cache {
             if metadata_only {
                 // handle ATTRIB
                 debug!(
@@ -271,7 +272,9 @@ impl Csync {
         }
 
         if src_path.exists() {
-            if metadata_only && dest_path.exists() {
+            // if in_ephermeral_cache, we need to sync file content on ATTRIB
+            // because we skipped sync content on MODIFY
+            if metadata_only && dest_path.exists() && !in_ephermeral_cache {
                 info!("Syncing metadata: {rel_path:?}");
                 self.sync_metadata(src_path, &dest_path)
             } else {

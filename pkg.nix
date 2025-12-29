@@ -32,6 +32,5 @@ rustPlatform.buildRustPackage {
     installShellCompletion "$COMPLETION_OUT_DIR"/{csync.fish,csync.bash,_csync}
   '';
 
-  useFetchCargoVendor = true;
   cargoHash = "sha256-9CW4m4poQTWraFAWrvUOP/c7PBvNQLB8EOEAVRSbVig=";
 }

@@ -1,13 +1,15 @@
 use crate::cache::TTLCache;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use filetime::FileTime;
-use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::WalkBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -20,6 +22,9 @@ pub(crate) struct Csync {
     no_delete: bool,
 
     gitignore: Gitignore,
+    // Cache of subdirectory gitignores: path -> Gitignore
+    // This enables support for .gitignore files in subdirectories
+    subdir_gitignore_cache: RwLock<HashMap<PathBuf, Gitignore>>,
     moved_from_cache: TTLCache<usize, PathBuf>,
     untrackable_moved_from_cache: TTLCache<PathBuf, ()>,
     ephemeral_cache: TTLCache<PathBuf, ()>,
@@ -54,6 +59,7 @@ impl Csync {
             source_dir: source_dir.to_path_buf(),
             target_dir: target_dir.to_path_buf(),
             gitignore: Self::new_gitignore(source_dir, use_gitignore, ignore_patterns)?,
+            subdir_gitignore_cache: RwLock::new(HashMap::new()),
             no_delete,
             moved_from_cache: TTLCache::new(Duration::from_millis(100)),
             untrackable_moved_from_cache: TTLCache::new(Duration::from_millis(100)),
@@ -85,8 +91,6 @@ impl Csync {
                 }
 
                 // Check ignore patterns
-                // TODO: the ignore mechanism in initial sync is slightly different from later syncs
-                // because initial sync will respect recursive .gitignore
                 if self.should_ignore(rel_path) {
                     return None;
                 }
@@ -494,9 +498,81 @@ impl Csync {
     }
 
     fn should_ignore(&self, path: &Path) -> bool {
-        self.gitignore
+        // First check root gitignore
+        if self
+            .gitignore
             .matched_path_or_any_parents(path, false)
             .is_ignore()
+        {
+            return true;
+        }
+
+        // Check subdirectory .gitignore files
+        // Walk up from the file's directory to the source_dir root
+        let mut current_dir = path;
+
+        // If path is a file, start from its parent directory
+        if path.is_file() || !path.exists() {
+            current_dir = match path.parent() {
+                Some(parent) => parent,
+                None => return false,
+            };
+        }
+
+        loop {
+            let abs_dir = self.source_dir.join(current_dir);
+            let gitignore_path = abs_dir.join(".gitignore");
+
+            if gitignore_path.exists() {
+                // Check cache first
+                {
+                    let cache = self.subdir_gitignore_cache.read().unwrap();
+                    if let Some(gitignore) = cache.get(current_dir) {
+                        if gitignore.matched(path, path.is_dir()).is_ignore() {
+                            return true;
+                        }
+                    }
+                }
+
+                // Not in cache, load it
+                if let Ok(gitignore) = self.load_subdir_gitignore(current_dir) {
+                    if gitignore.matched(path, path.is_dir()).is_ignore() {
+                        return true;
+                    }
+                }
+            }
+
+            // Move to parent directory
+            match current_dir.parent() {
+                Some(parent) if parent != Path::new("") => current_dir = parent,
+                _ => break,
+            }
+        }
+
+        false
+    }
+
+    fn load_subdir_gitignore(&self, rel_dir: &Path) -> Result<Gitignore> {
+        let abs_dir = self.source_dir.join(rel_dir);
+        let gitignore_path = abs_dir.join(".gitignore");
+
+        let mut builder = GitignoreBuilder::new(&abs_dir);
+        if let Some(err) = builder.add(&gitignore_path) {
+            bail!("Failed to load {}: {}", gitignore_path.display(), err);
+        }
+
+        let gitignore = builder.build()?;
+
+        // Cache it
+        let mut cache = self.subdir_gitignore_cache.write().unwrap();
+        cache.insert(rel_dir.to_path_buf(), gitignore.clone());
+
+        debug!(
+            "Loaded subdirectory .gitignore: {}",
+            gitignore_path.display()
+        );
+
+        Ok(gitignore)
     }
 
     fn sync_metadata(&self, src: &Path, dest: &Path) -> Result<()> {

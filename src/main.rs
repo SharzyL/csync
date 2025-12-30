@@ -4,13 +4,13 @@ mod csync;
 
 use anyhow::Context;
 use clap::Parser;
-use notify::{recommended_watcher, RecursiveMode, Watcher};
+use notify::{RecursiveMode, Watcher, recommended_watcher};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 use crate::args::CsyncArgs;
 use crate::csync::Csync;
@@ -77,10 +77,12 @@ fn main() -> Result<()> {
     }
 
     let handler_clone = csync.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(100));
-        if let Err(e) = handler_clone.lock().unwrap().check_cache() {
-            error!("Error on check_cache loop: {e:?}");
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_millis(100));
+            if let Err(e) = handler_clone.lock().unwrap().check_cache() {
+                error!("Error on check_cache loop: {e:?}");
+            }
         }
     });
 

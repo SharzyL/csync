@@ -8,13 +8,10 @@ To synchronize with remote directories, use **csync** in conjunction with sshfs.
 
 This project is currently in early development. The following is a list of planed improvements:
 
-- ✅ ~~Parallelize initial synchronization process~~ (Completed - using Rayon)
-- ✅ ~~Handle .gitignore in subdirectories~~ (Completed - recursive .gitignore support)
 - Potentially implement async Rust architecture
 - Implement debouncing for large file write operations
 - Add PollWatcher implementation for environments where necessary
 - Develop direct SSH access functionality
-- Add comprehensive test suite
 - Optimize git index access to reduce the cost of large file copies
 
 ## Build

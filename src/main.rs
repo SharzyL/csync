@@ -71,6 +71,11 @@ fn main() -> Result<()> {
             .context(format!("Failed to perform initial sync {source_dir:?}"))?;
     }
 
+    // Exit early if only initial sync was requested
+    if args.initial_sync_only {
+        return Ok(());
+    }
+
     let handler_clone = csync.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(100));

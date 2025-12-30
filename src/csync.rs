@@ -5,8 +5,10 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::WalkBuilder;
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
+use rayon::prelude::*;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -68,38 +70,71 @@ impl Csync {
         );
 
         let start_time = Instant::now();
-        let mut synced_files = 0;
-        for entry in WalkBuilder::new(&self.source_dir).build() {
-            let entry = entry?;
-            let src_path = entry.path();
-            let rel_path = match src_path.strip_prefix(&self.source_dir) {
-                Ok(p) => p,
-                Err(_) => continue, // Skip entries not in source dir
-            };
 
-            // Skip the root directory itself
-            if rel_path.to_str() == Some("") {
-                continue;
+        // First, collect all entries to sync
+        let entries: Vec<(PathBuf, PathBuf)> = WalkBuilder::new(&self.source_dir)
+            .build()
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let src_path = entry.path();
+                let rel_path = src_path.strip_prefix(&self.source_dir).ok()?;
+
+                // Skip the root directory itself
+                if rel_path.to_str() == Some("") {
+                    return None;
+                }
+
+                // Check ignore patterns
+                // TODO: the ignore mechanism in initial sync is slightly different from later syncs
+                // because initial sync will respect recursive .gitignore
+                if self.should_ignore(rel_path) {
+                    return None;
+                }
+
+                let dest_path = self.target_dir.join(rel_path);
+                Some((src_path.to_path_buf(), dest_path))
+            })
+            .collect();
+
+        let total_entries = entries.len();
+        info!("Found {total_entries} entries to sync");
+
+        // Sync files in parallel
+        let synced_count = AtomicUsize::new(0);
+        let errors: Vec<_> = entries
+            .par_iter()
+            .filter_map(|(src_path, dest_path)| {
+                trace!("Syncing {src_path:?}");
+                match self.sync_file(src_path, dest_path, fast) {
+                    Ok(_) => {
+                        synced_count.fetch_add(1, Ordering::Relaxed);
+                        None
+                    }
+                    Err(e) => Some(format!("Failed to sync {:?}: {:?}", src_path, e)),
+                }
+            })
+            .collect();
+
+        let synced_files = synced_count.load(Ordering::Relaxed);
+
+        if !errors.is_empty() {
+            error!("Encountered {} errors during initial sync:", errors.len());
+            for err in errors.iter().take(10) {
+                error!("  {}", err);
             }
-
-            // Check ignore patterns
-            // TODO: the ignore mechanism in initial sync is slightly different from later syncs
-            // because initial sync will respect recursive .gitignore
-            if self.should_ignore(rel_path) {
-                continue;
+            if errors.len() > 10 {
+                error!("  ... and {} more errors", errors.len() - 10);
             }
-
-            let dest_path = self.target_dir.join(rel_path);
-
-            trace!("Syncing {src_path:?}");
-            self.sync_file(src_path, dest_path.as_path(), fast)?;
-            synced_files += 1;
         }
 
         info!(
-            "Initial sync completed in {:.2?}. Synced {synced_files} files",
+            "Initial sync completed in {:.2?}. Synced {synced_files}/{total_entries} files",
             start_time.elapsed(),
         );
+
+        if !errors.is_empty() {
+            bail!("Initial sync completed with {} errors", errors.len());
+        }
 
         Ok(())
     }

@@ -27,6 +27,10 @@ pub(crate) struct CsyncArgs {
     #[arg(long)]
     pub skip_initial_sync: bool,
 
+    /// Perform initial sync only and exit (don't watch for changes)
+    #[arg(long)]
+    pub initial_sync_only: bool,
+
     /// Enable debug logging
     #[arg(long)]
     pub debug: bool,

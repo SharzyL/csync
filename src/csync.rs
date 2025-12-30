@@ -20,6 +20,7 @@ pub(crate) struct Csync {
     source_dir: PathBuf,
     target_dir: PathBuf,
     no_delete: bool,
+    use_gitignore: bool,
 
     gitignore: Gitignore,
     // Cache of subdirectory gitignores: path -> Gitignore
@@ -58,6 +59,7 @@ impl Csync {
         Ok(Self {
             source_dir: source_dir.to_path_buf(),
             target_dir: target_dir.to_path_buf(),
+            use_gitignore,
             gitignore: Self::new_gitignore(source_dir, use_gitignore, ignore_patterns)?,
             subdir_gitignore_cache: RwLock::new(HashMap::new()),
             no_delete,
@@ -498,6 +500,15 @@ impl Csync {
     }
 
     fn should_ignore(&self, path: &Path) -> bool {
+        // If gitignore is disabled, only check custom ignore patterns (already in self.gitignore)
+        // Don't load subdirectory .gitignore files
+        if !self.use_gitignore {
+            return self
+                .gitignore
+                .matched_path_or_any_parents(path, false)
+                .is_ignore();
+        }
+
         // First check root gitignore
         if self
             .gitignore

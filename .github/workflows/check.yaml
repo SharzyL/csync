@@ -35,6 +35,9 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
       - name: Build
         run: cargo build --release
 

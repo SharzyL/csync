@@ -3,6 +3,14 @@ name = "csync"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "csync"
+path = "src/lib.rs"
+
+[[bin]]
+name = "csync"
+path = "src/main.rs"
+
 [dependencies]
 clap = { version = "4.5.36", features = ["derive"] }
 filetime = "0.2.25"

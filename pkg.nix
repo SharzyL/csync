@@ -32,5 +32,5 @@ rustPlatform.buildRustPackage {
     installShellCompletion "$COMPLETION_OUT_DIR"/{csync.fish,csync.bash,_csync}
   '';
 
-  cargoHash = "sha256-1NfqrCNSC6dB7SDdeN6DxJMlGxRjf3hfDs63jl+UQUo=";
+  cargoHash = "sha256-M0pOO/ebxTDOEhVwOvUTPOYeLKR8J2tqhHh+jQtWGv4=";
 }

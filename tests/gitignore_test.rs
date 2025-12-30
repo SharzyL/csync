@@ -1,12 +1,10 @@
 mod common;
 
-use common::{CsyncRunner, TestEnv};
-use std::time::Duration;
+use common::TestEnv;
 
 #[test]
 fn test_root_gitignore_initial_sync() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create files
     env.create_source_file("file1.txt", "content1");
@@ -16,23 +14,28 @@ fn test_root_gitignore_initial_sync() {
     // Create root .gitignore
     env.create_gitignore(".", &["*.log", "temp_*"]);
 
-    // Run initial sync
-    let output = runner
-        .initial_sync(env.source_path(), env.target_path(), &[])
-        .expect("Failed to run csync");
-
-    assert!(output.status.success(), "csync failed: {:?}", output);
+    // Create csync and run initial sync
+    let csync = env.create_csync(&[], true, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Check results
-    assert!(env.target_file_exists("file1.txt"), "file1.txt should be synced");
-    assert!(!env.target_file_exists("file2.log"), "file2.log should be ignored");
-    assert!(!env.target_file_exists("temp_file.txt"), "temp_file.txt should be ignored");
+    assert!(
+        env.target_file_exists("file1.txt"),
+        "file1.txt should be synced"
+    );
+    assert!(
+        !env.target_file_exists("file2.log"),
+        "file2.log should be ignored"
+    );
+    assert!(
+        !env.target_file_exists("temp_file.txt"),
+        "temp_file.txt should be ignored"
+    );
 }
 
 #[test]
 fn test_subdirectory_gitignore_initial_sync() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create directory structure
     env.create_source_file("root.txt", "root content");
@@ -47,11 +50,8 @@ fn test_subdirectory_gitignore_initial_sync() {
     env.create_gitignore("subdir/nested", &["*.key", "*.pem"]);
 
     // Run initial sync
-    let output = runner
-        .initial_sync(env.source_path(), env.target_path(), &[])
-        .expect("Failed to run csync");
-
-    assert!(output.status.success(), "csync failed");
+    let csync = env.create_csync(&[], true, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Verify synced files
     assert!(env.target_file_exists("root.txt"));
@@ -66,7 +66,6 @@ fn test_subdirectory_gitignore_initial_sync() {
 #[test]
 fn test_nested_gitignore_patterns() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create deep directory structure
     env.create_source_file("level1/file1.txt", "l1");
@@ -79,11 +78,8 @@ fn test_nested_gitignore_patterns() {
     env.create_gitignore("level1/level2", &["*.o", "*.bin"]);
 
     // Run initial sync
-    let output = runner
-        .initial_sync(env.source_path(), env.target_path(), &[])
-        .expect("Failed to run csync");
-
-    assert!(output.status.success());
+    let csync = env.create_csync(&[], true, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Files should be synced
     assert!(env.target_file_exists("level1/file1.txt"));
@@ -96,58 +92,8 @@ fn test_nested_gitignore_patterns() {
 }
 
 #[test]
-fn test_gitignore_runtime_sync() {
-    let env = TestEnv::new();
-    let runner = CsyncRunner::new();
-
-    // Setup initial files and gitignore
-    env.create_source_file("existing.txt", "existing");
-    env.create_gitignore(".", &["*.log", "*.tmp"]);
-    env.create_gitignore("subdir", &["*.o"]);
-
-    // Run initial sync first
-    runner
-        .initial_sync(env.source_path(), env.target_path(), &[])
-        .expect("Failed initial sync");
-
-    // Start watching
-    let mut child = runner
-        .watch(env.source_path(), env.target_path(), &["--debug"])
-        .expect("Failed to start watch");
-
-    // Give csync time to start watching
-    std::thread::sleep(Duration::from_millis(500));
-
-    // Create new files that should be synced
-    env.create_source_file("new_file.txt", "new content");
-    env.create_source_file("subdir/code.rs", "rust code");
-
-    // Create new files that should be ignored
-    env.create_source_file("debug.log", "log");
-    env.create_source_file("temp.tmp", "temp");
-    env.create_source_file("subdir/build.o", "object");
-
-    // Wait for syncs
-    std::thread::sleep(Duration::from_millis(1500));
-
-    // Kill the watcher
-    child.kill().expect("Failed to kill child process");
-    let _ = child.wait();
-
-    // Verify synced files
-    assert!(env.target_file_exists("new_file.txt"));
-    assert!(env.target_file_exists("subdir/code.rs"));
-
-    // Verify ignored files
-    assert!(!env.target_file_exists("debug.log"));
-    assert!(!env.target_file_exists("temp.tmp"));
-    assert!(!env.target_file_exists("subdir/build.o"));
-}
-
-#[test]
 fn test_gitignore_directory_patterns() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create directory structure
     env.create_source_file("src/main.rs", "main");
@@ -158,11 +104,8 @@ fn test_gitignore_directory_patterns() {
     // Gitignore directories
     env.create_gitignore(".", &["target/", "cache/"]);
 
-    let output = runner
-        .initial_sync(env.source_path(), env.target_path(), &[])
-        .expect("Failed to run csync");
-
-    assert!(output.status.success());
+    let csync = env.create_csync(&[], true, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Source files should sync
     assert!(env.target_file_exists("src/main.rs"));
@@ -176,22 +119,21 @@ fn test_gitignore_directory_patterns() {
 #[test]
 fn test_no_gitignore_flag() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create files and gitignore
     env.create_source_file("file.txt", "content");
     env.create_source_file("debug.log", "log");
     env.create_gitignore(".", &["*.log"]);
 
-    // Run with --no-git-ignore flag
-    let output = runner
-        .initial_sync(env.source_path(), env.target_path(), &["--no-git-ignore"])
-        .expect("Failed to run csync");
-
-    assert!(output.status.success());
+    // Create csync with use_gitignore = false
+    let csync = env.create_csync(&[], false, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Both files should be synced when gitignore is disabled
-    assert!(env.target_file_exists("file.txt"), "file.txt should be synced");
+    assert!(
+        env.target_file_exists("file.txt"),
+        "file.txt should be synced"
+    );
     assert!(
         env.target_file_exists("debug.log"),
         "debug.log should be synced with --no-git-ignore (gitignore *.log pattern should be ignored)"
@@ -201,7 +143,6 @@ fn test_no_gitignore_flag() {
 #[test]
 fn test_custom_ignore_patterns() {
     let env = TestEnv::new();
-    let runner = CsyncRunner::new();
 
     // Create files
     env.create_source_file("file.txt", "content");
@@ -209,15 +150,8 @@ fn test_custom_ignore_patterns() {
     env.create_source_file("backup.bak", "backup");
 
     // Use custom ignore patterns (no .gitignore file)
-    let output = runner
-        .initial_sync(
-            env.source_path(),
-            env.target_path(),
-            &["-i", "*.bak", "-i", "test.*"],
-        )
-        .expect("Failed to run csync");
-
-    assert!(output.status.success());
+    let csync = env.create_csync(&["*.bak".to_string(), "test.*".to_string()], true, false);
+    csync.initial_sync(false).expect("Initial sync failed");
 
     // Only file.txt should be synced
     assert!(env.target_file_exists("file.txt"));

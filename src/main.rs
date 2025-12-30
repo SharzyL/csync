@@ -1,19 +1,10 @@
-mod args;
-mod cache;
-mod csync;
-
 use anyhow::Context;
 use clap::Parser;
+use csync::{Csync, CsyncArgs, setup_logger};
 use notify::{RecursiveMode, Watcher, recommended_watcher};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-
-use crate::args::CsyncArgs;
-use crate::csync::Csync;
 
 type Result<T> = anyhow::Result<T>;
 
@@ -44,11 +35,9 @@ fn main() -> Result<()> {
             .watch(&source_dir, RecursiveMode::Recursive)
             .context(format!("Failed to watch {source_dir:?}"))?;
 
-        for event in rx {
-            if let Ok(event) = event {
-                if !matches!(event.kind, notify::EventKind::Access(_)) {
-                    info!("{:?}", event);
-                }
+        for event in rx.into_iter().flatten() {
+            if !matches!(event.kind, notify::EventKind::Access(_)) {
+                info!("{:?}", event);
             }
         }
 
@@ -92,39 +81,9 @@ fn main() -> Result<()> {
         .watch(&source_dir, RecursiveMode::Recursive)
         .context(format!("Failed to watch {source_dir:?}"))?;
 
-    for event in rx {
-        if let Ok(event) = event {
-            csync.lock().unwrap().handle_event(&event);
-        }
+    for event in rx.into_iter().flatten() {
+        csync.lock().unwrap().handle_event(&event);
     }
 
     Ok(())
-}
-
-pub fn setup_logger(debug: bool, trace: bool) {
-    let default_level = if trace {
-        "trace"
-    } else if debug {
-        "debug"
-    } else {
-        "info"
-    };
-
-    let env_filter = EnvFilter::from_default_env()
-        .add_directive(default_level.parse().unwrap())
-        .add_directive("ignore=off".parse().unwrap())
-        .add_directive("globset=off".parse().unwrap());
-
-    let mut fmt_layer = tracing_subscriber::fmt::layer()
-        .with_target(false)
-        .with_level(true);
-
-    if trace {
-        fmt_layer = fmt_layer.with_target(true)
-    }
-
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .init();
 }

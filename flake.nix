@@ -16,6 +16,16 @@
       makePkg = ./pkg.nix;
       overlay = final: _: { ${name} = final.callPackage makePkg { }; };
 
+      shellOverride = pkgs: oldAttrs: {
+        name = "${name}-dev-shell";
+        version = null;
+        src = null;
+
+        nativeBuildInputs = (oldAttrs.nativeBuildInputs or [ ]) ++ (with pkgs; [
+          clippy
+        ]);
+      };
+
     in
     # flake-parts boilerplate
     flake-parts.lib.mkFlake { inherit inputs; } {
@@ -37,7 +47,7 @@
           overlays = [ overlay ];
         };
 
-        devShells.default = config.packages.default;
+        devShells.default = config.packages.default.overrideAttrs (shellOverride pkgs);
 
         treefmt = {
           programs.rustfmt.enable = true;

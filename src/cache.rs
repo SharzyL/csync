@@ -83,7 +83,7 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> TTLCache<K, V> {
         remove_and_callback(
             &mut cache,
             |_, entry| now.duration_since(entry.created_at) > self.ttl,
-            |k, v| callback(&k, &v.value),
+            |k, v| callback(k, &v.value),
         )
     }
 }

@@ -16,7 +16,7 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 type Result<T> = anyhow::Result<T>;
 
-pub(crate) struct Csync {
+pub struct Csync {
     source_dir: PathBuf,
     target_dir: PathBuf,
     no_delete: bool,
@@ -148,9 +148,9 @@ impl Csync {
     pub fn check_cache(&mut self) -> Result<()> {
         self.moved_from_cache
             .expire(|_, src_rel_path| -> Result<()> {
-                let dest_path = self.target_dir.join(&src_rel_path);
+                let dest_path = self.target_dir.join(src_rel_path);
                 info!("Delete {:?} for expired moved_from cache", src_rel_path);
-                let src_path = self.source_dir.join(&src_rel_path);
+                let src_path = self.source_dir.join(src_rel_path);
                 if !src_path.exists() && dest_path.exists() && !self.no_delete {
                     self.delete_file(&dest_path)
                         .context("Failed to delete on checking moved_from_cache")?
@@ -160,8 +160,8 @@ impl Csync {
 
         self.untrackable_moved_from_cache
             .expire(|src_rel_path, _| {
-                let dest_path = self.target_dir.join(&src_rel_path);
-                let src_path = self.source_dir.join(&src_rel_path);
+                let dest_path = self.target_dir.join(src_rel_path);
+                let src_path = self.source_dir.join(src_rel_path);
                 if !src_path.exists() && dest_path.exists() && !self.no_delete {
                     info!("Delete {:?} for expired moved_from cache", src_rel_path);
                     self.delete_file(&dest_path)
@@ -171,8 +171,8 @@ impl Csync {
             })?;
 
         self.ephemeral_cache.expire(|src_rel_path, _| {
-            let dest_path = self.target_dir.join(&src_rel_path);
-            let src_path = self.source_dir.join(&src_rel_path);
+            let dest_path = self.target_dir.join(src_rel_path);
+            let src_path = self.source_dir.join(src_rel_path);
             if self.source_dir.join(&src_path).exists() {
                 info!("Delete {:?} for expired moved_from cache", src_rel_path);
                 self.sync_file(&self.source_dir.join(&src_path), &dest_path, false)
@@ -458,10 +458,10 @@ impl Csync {
         use_gitignore: bool,
         ignore_patterns: &Vec<String>,
     ) -> Result<Gitignore> {
-        let mut builder = GitignoreBuilder::new(&source_dir);
+        let mut builder = GitignoreBuilder::new(source_dir);
         for pattern in ignore_patterns {
             builder
-                .add_line(None, &pattern)
+                .add_line(None, pattern)
                 .context("Failed to add ignore pattern")?;
         }
         builder.add_line(None, ".git/**/*.lock")?;
@@ -469,7 +469,7 @@ impl Csync {
         builder.add_line(None, ".git/COMMIT_EDITMSG")?;
 
         if use_gitignore {
-            Self::load_gitignore(&source_dir, &mut builder)
+            Self::load_gitignore(source_dir, &mut builder)
                 .context("Failed to load git ignore file")?;
         }
 
@@ -538,18 +538,18 @@ impl Csync {
                 // Check cache first
                 {
                     let cache = self.subdir_gitignore_cache.read().unwrap();
-                    if let Some(gitignore) = cache.get(current_dir) {
-                        if gitignore.matched(path, path.is_dir()).is_ignore() {
-                            return true;
-                        }
+                    if let Some(gitignore) = cache.get(current_dir)
+                        && gitignore.matched(path, path.is_dir()).is_ignore()
+                    {
+                        return true;
                     }
                 }
 
                 // Not in cache, load it
-                if let Ok(gitignore) = self.load_subdir_gitignore(current_dir) {
-                    if gitignore.matched(path, path.is_dir()).is_ignore() {
-                        return true;
-                    }
+                if let Ok(gitignore) = self.load_subdir_gitignore(current_dir)
+                    && gitignore.matched(path, path.is_dir()).is_ignore()
+                {
+                    return true;
                 }
             }
 
@@ -592,14 +592,13 @@ impl Csync {
         let dest_metadata =
             std::fs::metadata(dest).context(format!("Failed to get metadata for src {dest:?}"))?;
 
-        if let Ok(src_mtime) = src_metadata.modified() {
-            if let Ok(dest_mtime) = src_metadata.modified() {
-                if src_mtime != dest_mtime {
-                    debug!("syncing mtime of {src:?}");
-                    filetime::set_file_mtime(dest, FileTime::from_system_time(src_mtime))
-                        .context("Failed to set mtime")?
-                }
-            }
+        if let Ok(src_mtime) = src_metadata.modified()
+            && let Ok(dest_mtime) = src_metadata.modified()
+            && src_mtime != dest_mtime
+        {
+            debug!("syncing mtime of {src:?}");
+            filetime::set_file_mtime(dest, FileTime::from_system_time(src_mtime))
+                .context("Failed to set mtime")?
         };
 
         if src_metadata.permissions() != dest_metadata.permissions() {
@@ -619,10 +618,8 @@ impl Csync {
                     .context(format!("Failed to create parent directory {parent:?}",))?
             }
 
-            if fast_check {
-                if files_equal_fast(src, dest)? {
-                    debug!("Skipping file sync by metadata comparison: {src:?}");
-                }
+            if fast_check && files_equal_fast(src, dest)? {
+                debug!("Skipping file sync by metadata comparison: {src:?}");
             }
 
             if dest.exists() {

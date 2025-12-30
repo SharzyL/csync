@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about)]
-pub(crate) struct CsyncArgs {
+pub struct CsyncArgs {
     pub source_dir: PathBuf,
     pub target_dir: PathBuf,
 

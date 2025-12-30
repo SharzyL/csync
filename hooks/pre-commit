@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Pre-commit hook that runs cargo fmt and cargo clippy
+#
+# To install this hook, copy it to .git/hooks/pre-commit:
+#   cp hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Check formatting
+echo "Checking code formatting with cargo fmt..."
+if ! cargo fmt --check; then
+    echo "❌ Code formatting check failed!"
+    echo "Please run 'cargo fmt' to format your code before committing."
+    exit 1
+fi
+echo "✓ Code formatting check passed"
+
+# Run clippy
+echo "Running clippy linter..."
+if ! cargo clippy -- -D warnings; then
+    echo "❌ Clippy check failed!"
+    echo "Please fix the clippy warnings before committing."
+    exit 1
+fi
+echo "✓ Clippy check passed"
+
+echo "✓ All pre-commit checks passed!"
